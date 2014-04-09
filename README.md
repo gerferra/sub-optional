@@ -1,4 +1,5 @@
 crappy-optional
 ===============
 
-Convenient (but crappy) command line parsing for Scala
+Command line parsing inspired by the once awesome paulp/optional
+
