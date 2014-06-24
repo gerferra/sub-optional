@@ -13,6 +13,7 @@ trait Application extends Logging {
   def main(args: Array[String]) {
     runMain(this, args.toList)
   }
+  
 
   private def runMain[T: ClassTag](instance: T, args: List[String]) {
 
@@ -106,6 +107,10 @@ object Application extends Logging {
 
       Try(valueStr.toBoolean).fold(Right(_), _ => Left(defError))
 
+    } else if (paramType =:= ru.typeOf[java.io.File]) {
+      
+      Try(new java.io.File(valueStr)).fold(Right(_), _ => Left(defError))
+      
     } else if (paramType <:< ru.typeOf[Option[_]]) {
       val ru.TypeRef(_, _, innerType :: Nil) = paramType
 
