@@ -11,35 +11,36 @@ import scala.collection.JavaConverters._
 
 object usr extends optional.Application with Logging {
 
-  def main(nombre: Option[String], cantidad: Option[Int], uid: Option[String], cedula: Option[Int], login: Option[String], debug: Option[Boolean]) {
+  def main(name: Option[String], limit: Option[Int], uid: Option[String], login: Option[String], debug: Option[Boolean]) {
 
-    val effDebug = debug.getOrElse(false)
-
-    if (Seq(nombre, uid, cedula, login).flatten.isEmpty) {
-      println("Debe especificar algún criterio de búsqueda")
+    if (Seq(name, uid, login).flatten.isEmpty) {
+      println("You must specify at least one search criteria")
       System.exit(1)
     }
 
-    val futUsrLDAPA = Future { ldapA.findUsr(nombre, cantidad, uid, cedula, login) }
-    val futUsrLDAPB = Future { ldapB.findUsr(nombre, cantidad, uid, cedula, login) }
-    val futUsrDB = Future { dbase.findUsr(nombre, cantidad, uid, cedula, login) }
+    val effDebug = debug.getOrElse(false)
 
-    /*
-     * no puedo usar `onComplete` porque no puedo esperar a su finalización y 
-     * por lo tanto no hay garantías que se imprima el resultado
+    val futUsrLDAPA = Future { ldapA.findUsr(name, limit, uid, login) }
+    val futUsrLDAPB = Future { ldapB.findUsr(name, limit, uid, login) }
+    val futUsrDB = Future { dbase.findUsr(name, limit, uid, login) }
+
+    // V1
+    /* can't use `onComplete` because there is no guarantee that it executes before program termination
     futUsrLDAPA.onComplete(printResult("--- LDAP A ---", debug = effDebug))
     futUsrLDAPB.onComplete(printResult("--- LDAP B ---", debug = effDebug))
-    futUsrBD.onComplete(printResult("--- Base Datos ---", debug = effDebug))
-
-    val res = Await.ready(Future.sequence(Seq(futUsrLDAPA, futUsrLDAPB, futUsrBD)), Duration.Inf)
-	*/
+    futUsrDB.onComplete(printResult("--- Data Base ---", debug = effDebug))
     
+    val res = Await.ready(Future.sequence(Seq(futUsrLDAPA, futUsrLDAPB, futUsrDB)), Duration.Inf)
+    // */
+
+    // V2
+    // /*
     val endLDAPA = futUsrLDAPA.continue(printResult("--- LDAP A ---", debug = effDebug))
     val endLDAPB = futUsrLDAPB.continue(printResult("--- LDAP B ---", debug = effDebug))
     val endDB = futUsrDB.continue(printResult("--- Data Base ---", debug = effDebug))
-    
-    val res = Await.ready(Future.sequence(Seq(endLDAPA, endLDAPB, endDB)), Duration.Inf)
 
+    val res = Await.ready(Future.sequence(Seq(endLDAPA, endLDAPB, endDB)), Duration.Inf)
+    // */
   }
 
   implicit class FutureOps[T](val f: Future[T]) extends AnyVal {
@@ -60,12 +61,12 @@ object usr extends optional.Application with Logging {
   }
 
   type Error = String
-  type UsrInfo = String
+  case class UsrInfo(name: String, id: String)
 
   def printResult(prefix: String, debug: Boolean)(res: Try[Either[Error, Iterable[UsrInfo]]]) {
 
     def printUsers(it: Iterable[UsrInfo]): Unit = {
-      val str = it.map(showInfo).mkString("\n\n").toNel.getOrElse("<sin resultados>")
+      val str = it.map(showInfo).mkString("\n").toNel.getOrElse("<no results>")
       println(prefix)
       println(str)
       println()
@@ -82,6 +83,8 @@ object usr extends optional.Application with Logging {
       either.fold(printError, printUsers)
     }
 
+    //Thread.sleep(1000)
+
     synchronized {
       res.fold(printEither, printError)
     }
@@ -89,39 +92,49 @@ object usr extends optional.Application with Logging {
   }
 
   def showInfo(info: UsrInfo): String = {
-    info
+    import info._
+    s"$name, id: $id"
   }
 
   val testData =
     Seq(
-      "Some user 1",
-      "Other 999",
-      "Another 60")
-
+      UsrInfo("Some user", "suser1"),
+      UsrInfo("Other", "other"),
+      UsrInfo("Another", "another16"))
 
   trait Usr {
 
     def findUsrById(limit: Int)(id: String): Either[Error, Iterable[UsrInfo]]
-    def findUsrByCedula(limit: Int)(cedula: Int): Either[Error, Iterable[UsrInfo]]
     def findUsrByName(limit: Int)(name: String): Either[Error, Iterable[UsrInfo]]
 
-    def findUsr(nombre: Option[String], cantidad: Option[Int], uid: Option[String], cedula: Option[Int], login: Option[String]): Either[Error, Iterable[UsrInfo]] = {
+    def findUsr(name: Option[String], limit: Option[Int], uid: Option[String], login: Option[String]): Either[Error, Iterable[UsrInfo]] = {
 
-      val limit = cantidad.getOrElse(20)
+      val effLimit = limit.getOrElse(20)
 
       val optId = Seq(uid, login).flatten.map(_.toUpperCase).headOption
 
-      val byId = optId.view.map { findUsrById(limit) }
-      val byCed = cedula.view.map { findUsrByCedula(limit) }
-      val byName = nombre.view.map { findUsrByName(limit) }
+      val byId = optId.view.map { findUsrById(effLimit) }
+      val byName = name.view.map { findUsrByName(effLimit) }
 
-      val resTot = byId ++ byCed ++ byName
+      val resTot = byId ++ byName
 
       val res = resTot.headOption
 
-      res.getOrElse(Left("No se especificó ningún criterio de búsqueda"))
+      res.getOrElse(Left("No search criteria specified"))
 
     }
+  }
+
+  object dbase extends Usr {
+
+    def findUsrById(limit: Int)(id: String): Either[Error, Iterable[UsrInfo]] = {
+      Right(Nil)
+    }
+
+    def findUsrByName(limit: Int)(name: String): Either[Error, Iterable[UsrInfo]] = {
+      Right(testData.filter(_.name.toLowerCase.contains(name.toLowerCase)).take(limit))
+    }
+
   }
 
   trait UsrLDAP extends Usr {
@@ -129,15 +142,11 @@ object usr extends optional.Application with Logging {
     def providerURL: String
 
     def findUsrById(limit: Int)(id: String): Either[Error, Iterable[UsrInfo]] = {
-      Right(testData)
-    }
-
-    def findUsrByCedula(limit: Int)(cedula: Int): Either[Error, Iterable[UsrInfo]] = {
-      Left("<Búsqueda por cédula no soportada en LDAP>")
+      Right(testData.filter(_.id.toLowerCase.contains(id.toLowerCase)).take(limit))
     }
 
     def findUsrByName(limit: Int)(name: String): Either[Error, Iterable[UsrInfo]] = {
-      Right(testData)
+      Right(Nil)
     }
 
   }
@@ -145,21 +154,5 @@ object usr extends optional.Application with Logging {
   object ldapA extends UsrLDAP { def providerURL: String = "ldap://ldapA/" }
 
   object ldapB extends UsrLDAP { def providerURL: String = "ldap://ldapB/" }
-
-  object dbase extends Usr {
-
-    def findUsrById(limit: Int)(id: String): Either[Error, Iterable[UsrInfo]] = {
-      Right(testData)
-    }
-
-    def findUsrByCedula(limit: Int)(cedula: Int): Either[Error, Iterable[UsrInfo]] = {
-      Right(testData)
-    }
-
-    def findUsrByName(limit: Int)(name: String): Either[Error, Iterable[UsrInfo]] = {
-      Right(testData)
-    }
-
-  }
 
 }

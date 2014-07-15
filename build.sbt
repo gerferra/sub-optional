@@ -11,6 +11,8 @@ libraryDependencies ++= Seq(
   "org.scala-lang" % "scala-reflect" % scalaVersion.value
 )
 
+fork := true
+
 incOptions := incOptions.value.withNameHashing(true)
 
 EclipseKeys.executionEnvironment := Some(EclipseExecutionEnvironment.JavaSE16)
@@ -18,4 +20,7 @@ EclipseKeys.executionEnvironment := Some(EclipseExecutionEnvironment.JavaSE16)
 EclipseKeys.withSource := true
 
 EclipseKeys.createSrc := EclipseCreateSrc.Default + EclipseCreateSrc.Resource
+
+
+
 
