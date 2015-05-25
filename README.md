@@ -5,7 +5,7 @@ Command line parsing inspired by the once awesome paulp/optional.
 
 ////
 
-Slides of a presentation I gave at the Scala Meetup Montevideo about this this lib, when it was still named "crappy-optional".
+Slides of a presentation I gave at the Scala Meetup Montevideo about this this "lib", when it was still named "crappy-optional".
 
 "An excuse to Try, Either, folding, and Future.sequence"
 
